@@ -1,0 +1,41 @@
+[project]
+name = "birdwatcher"
+version = "0.1.0"
+description = "Distributed Event Processing Platform"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.135.0",
+    "uvicorn[standard]>=0.42.0",
+    "pymongo>=4.16.0",
+    "elasticsearch[async]>=9.3.0",
+    "redis>=7.4.0",
+    "pydantic>=2.12.0",
+    "pydantic-settings>=2.13.0",
+    "structlog>=25.5.0",
+    "orjson>=3.10.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=1.3.0",
+    "httpx>=0.27.0",
+    "asgi-lifespan>=2.1.0",
+    "fakeredis>=2.34.0",
+    "testcontainers[mongodb,elasticsearch]>=4.14.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+markers = [
+    "unit: unit tests (no external dependencies)",
+    "integration: integration tests (require Docker)",
+]
+testpaths = ["src/tests"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
