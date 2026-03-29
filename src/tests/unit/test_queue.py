@@ -68,3 +68,64 @@ class TestInMemoryQueueBasics:
         await q.ack(msg.message_id)
         # join() should return immediately since all tasks are done
         await asyncio.wait_for(q.join(), timeout=1.0)
+
+
+@pytest.mark.unit
+class TestDeadLetterQueue:
+    async def test_put_and_get(self):
+        dlq = DeadLetterQueue(maxsize=10)
+        msg = _msg()
+        await dlq.put(msg)
+        assert dlq.qsize() == 1
+        got = await dlq.get()
+        assert got.message_id == msg.message_id
+
+    async def test_overflow_drops_message(self, capsys):
+        dlq = DeadLetterQueue(maxsize=1)
+        await dlq.put(_msg("first"))
+        await dlq.put(_msg("dropped"))  # should log, not raise
+        assert dlq.qsize() == 1
+
+
+@pytest.mark.unit
+class TestNackRouting:
+    async def test_nack_increments_retry(self):
+        dlq = DeadLetterQueue(maxsize=10)
+        q = InMemoryQueue(maxsize=10, dlq=dlq, max_retries=3)
+        msg = _msg()
+        await q.enqueue(msg)
+        await q.drain(max_items=1, timeout=1.0)
+        await q.nack(msg, "err")
+        assert msg.retry_count == 1
+        assert msg.error_history == ["err"]
+
+    async def test_nack_requeues(self):
+        dlq = DeadLetterQueue(maxsize=10)
+        q = InMemoryQueue(maxsize=10, dlq=dlq, max_retries=3)
+        msg = _msg()
+        await q.enqueue(msg)
+        await q.drain(max_items=1, timeout=1.0)
+        await q.nack(msg, "err")
+        assert q.qsize() == 1  # back in queue
+
+    async def test_nack_max_retries_routes_to_dlq(self):
+        dlq = DeadLetterQueue(maxsize=10)
+        q = InMemoryQueue(maxsize=10, dlq=dlq, max_retries=2)
+        msg = _msg()
+        msg.retry_count = 1  # one retry already
+        await q.enqueue(msg)
+        await q.drain(max_items=1, timeout=1.0)
+        await q.nack(msg, "final-err")
+        assert dlq.qsize() == 1
+        assert q.qsize() == 0
+
+    async def test_nack_full_queue_routes_to_dlq(self):
+        dlq = DeadLetterQueue(maxsize=10)
+        q = InMemoryQueue(maxsize=1, dlq=dlq, max_retries=5)
+        msg = _msg("original")
+        await q.enqueue(msg)
+        await q.drain(max_items=1, timeout=1.0)
+        # Fill queue so nack can't re-enqueue
+        await q.enqueue(_msg("filler"))
+        await q.nack(msg, "err")
+        assert dlq.qsize() == 1  # routed to DLQ
