@@ -117,3 +117,76 @@ class TestEventFilter:
             EventFilter(limit=0)
         with pytest.raises(Exception):
             EventFilter(limit=201)
+
+
+from src.analytics.schemas import TimeBucket, StatsQuery, StatsWindow, RealtimeStatsQuery, StatsBucket
+from src.search.schemas import SearchQuery
+
+@pytest.mark.unit
+class TestStatsQuery:
+    def test_valid(self):
+        q = StatsQuery(
+            time_bucket=TimeBucket.HOURLY,
+            start_date=datetime.now(timezone.utc) - timedelta(days=1),
+            end_date=datetime.now(timezone.utc),
+        )
+        assert q.time_bucket == TimeBucket.HOURLY
+
+    def test_hourly_exceeds_max_range(self):
+        with pytest.raises(ValueError, match="exceeds"):
+            StatsQuery(
+                time_bucket=TimeBucket.HOURLY,
+                start_date=datetime.now(timezone.utc) - timedelta(days=10),
+                end_date=datetime.now(timezone.utc),
+            )
+
+    def test_daily_within_range(self):
+        q = StatsQuery(
+            time_bucket=TimeBucket.DAILY,
+            start_date=datetime.now(timezone.utc) - timedelta(days=300),
+            end_date=datetime.now(timezone.utc),
+        )
+        assert q.time_bucket == TimeBucket.DAILY
+
+    def test_daily_exceeds_max_range(self):
+        with pytest.raises(ValueError, match="exceeds"):
+            StatsQuery(
+                time_bucket=TimeBucket.DAILY,
+                start_date=datetime.now(timezone.utc) - timedelta(days=400),
+                end_date=datetime.now(timezone.utc),
+            )
+
+    def test_no_date_range_ok(self):
+        q = StatsQuery(time_bucket=TimeBucket.WEEKLY)
+        assert q.start_date is None
+
+
+@pytest.mark.unit
+class TestRealtimeStatsQuery:
+    def test_defaults(self):
+        q = RealtimeStatsQuery()
+        assert q.window == StatsWindow.LAST_1H
+        assert q.event_type is None
+
+    def test_with_event_type(self):
+        q = RealtimeStatsQuery(window=StatsWindow.LAST_24H, event_type="click")
+        assert q.event_type == "click"
+
+
+@pytest.mark.unit
+class TestSearchQuery:
+    def test_valid(self):
+        q = SearchQuery(q="chrome mobile")
+        assert q.q == "chrome mobile"
+        assert q.skip == 0
+        assert q.limit == 20
+
+    def test_with_filters(self):
+        q = SearchQuery(q="test", event_type="click", user_id="u1")
+        assert q.event_type == "click"
+
+    def test_limit_bounds(self):
+        with pytest.raises(Exception):
+            SearchQuery(q="test", limit=0)
+        with pytest.raises(Exception):
+            SearchQuery(q="test", limit=101)
