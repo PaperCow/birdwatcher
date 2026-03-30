@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import APIRouter, Request
 
 router = APIRouter()
@@ -15,10 +17,10 @@ async def health_check(request: Request) -> dict:
     dlq = state.dlq
     settings = state.settings
 
-    # Check dependencies
-    mongodb_ok = await db.check_mongodb()
-    elasticsearch_ok = await db.check_elasticsearch()
-    redis_ok = await db.check_redis()
+    # Check dependencies concurrently
+    mongodb_ok, elasticsearch_ok, redis_ok = await asyncio.gather(
+        db.check_mongodb(), db.check_elasticsearch(), db.check_redis()
+    )
 
     # Check pipeline
     worker_alive = worker.is_alive()
