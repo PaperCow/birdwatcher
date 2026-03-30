@@ -7,8 +7,6 @@ from src.core.logging import get_logger
 
 logger = get_logger(component="queue")
 
-SENTINEL = object()
-
 
 class InMemoryQueue:
     def __init__(self, maxsize: int, max_retries: int = 5, dlq_maxsize: int = 1000):
@@ -27,8 +25,6 @@ class InMemoryQueue:
         items: list[ReceivedMessage] = []
         try:
             first = await asyncio.wait_for(self._queue.get(), timeout=timeout)
-            if first is SENTINEL:
-                return items
             receipt_handle = first.message_id
             self._in_flight[receipt_handle] = first
             items.append(ReceivedMessage(queue_message=first, receipt_handle=receipt_handle))
@@ -38,8 +34,6 @@ class InMemoryQueue:
         while len(items) < max_items:
             try:
                 item = self._queue.get_nowait()
-                if item is SENTINEL:
-                    return items
                 receipt_handle = item.message_id
                 self._in_flight[receipt_handle] = item
                 items.append(ReceivedMessage(queue_message=item, receipt_handle=receipt_handle))
@@ -48,7 +42,9 @@ class InMemoryQueue:
         return items
 
     async def ack(self, receipt_handle: str) -> None:
-        self._in_flight.pop(receipt_handle, None)
+        if self._in_flight.pop(receipt_handle, None) is None:
+            logger.warning("ack_unknown_receipt_handle", receipt_handle=receipt_handle)
+            return
         self._queue.task_done()
 
     async def nack(self, receipt_handle: str) -> None:
@@ -75,6 +71,3 @@ class InMemoryQueue:
 
     async def join(self) -> None:
         await self._queue.join()
-
-    async def shutdown(self) -> None:
-        await self._queue.put(SENTINEL)

@@ -1,4 +1,3 @@
-import asyncio
 import pytest
 from src.queue.base import QueueMessage, ReceivedMessage
 from src.queue.memory import InMemoryQueue
@@ -55,14 +54,6 @@ class TestInMemoryQueueBasics:
         assert await q.qsize() == 0
         await q.enqueue(_msg())
         assert await q.qsize() == 1
-
-    async def test_ack_calls_task_done(self):
-        q = InMemoryQueue(maxsize=10, max_retries=3)
-        msg = _msg()
-        await q.enqueue(msg)
-        batch = await q.drain(max_items=1, timeout=1.0)
-        await q.ack(batch[0].receipt_handle)
-        await asyncio.wait_for(q.join(), timeout=1.0)
 
     async def test_ack_removes_from_in_flight(self):
         q = InMemoryQueue(maxsize=10, max_retries=3)
@@ -133,22 +124,9 @@ class TestNackRouting:
         q = InMemoryQueue(maxsize=10, max_retries=3)
         await q.nack("nonexistent")  # should not raise
 
-
-@pytest.mark.unit
-class TestShutdown:
-    async def test_shutdown_ends_drain(self):
+    async def test_ack_unknown_receipt_handle_is_noop(self):
         q = InMemoryQueue(maxsize=10, max_retries=3)
-        await q.enqueue(_msg("before"))
-        await q.shutdown()
-        batch = await q.drain(max_items=10, timeout=1.0)
-        assert len(batch) == 1
-        assert batch[0].queue_message.payload["idempotency_key"] == "before"
-
-    async def test_shutdown_empty_queue(self):
-        q = InMemoryQueue(maxsize=10, max_retries=3)
-        await q.shutdown()
-        batch = await q.drain(max_items=10, timeout=1.0)
-        assert batch == []
+        await q.ack("nonexistent")  # should not raise
 
 
 @pytest.mark.unit

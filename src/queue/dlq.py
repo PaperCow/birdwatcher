@@ -25,7 +25,6 @@ class DeadLetterQueue:
             logger.error(
                 "dlq_overflow_dropped",
                 message_id=message.message_id,
-                last_error=message.last_error,
                 retry_count=message.retry_count,
             )
 
