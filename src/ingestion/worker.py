@@ -50,32 +50,40 @@ class EventWorker:
         return elapsed < staleness_seconds
 
     async def run(self) -> None:
-        try:
-            while True:
-                batch = await self._queue.drain(self._batch_size, self._batch_timeout)
-                self._last_heartbeat = datetime.now(timezone.utc)
+        while True:
+            try:
+                while True:
+                    batch = await self._queue.drain(self._batch_size, self._batch_timeout)
+                    self._last_heartbeat = datetime.now(timezone.utc)
 
-                real_batch, has_sentinel = self._split_sentinel(batch)
-                if real_batch:
-                    try:
-                        await self.process_batch(real_batch)
-                        self._consecutive_failures = 0
-                    except Exception as e:
-                        logger.error("batch_level_failure", error=str(e))
-                        for msg in real_batch:
-                            await self._queue.nack(msg, str(e))
-                        # Backoff is per-batch-cycle, not per-message: asyncio.Queue has no delayed delivery.
-                        self._consecutive_failures += 1
-                        delay = min(
-                            self._backoff_base * (2 ** self._consecutive_failures),
-                            self._backoff_max,
-                        )
-                        await asyncio.sleep(delay + random.uniform(0, delay * 0.1))
-                if has_sentinel:
-                    logger.info("shutdown_sentinel_received")
-                    break
-        except Exception:
-            logger.exception("worker_fatal_error")
+                    real_batch, has_sentinel = self._split_sentinel(batch)
+                    if real_batch:
+                        try:
+                            await self.process_batch(real_batch)
+                            self._consecutive_failures = 0
+                        except Exception as e:
+                            logger.error("batch_level_failure", error=str(e))
+                            for msg in real_batch:
+                                await self._queue.nack(msg, str(e))
+                            # Backoff is per-batch-cycle, not per-message: asyncio.Queue has no delayed delivery.
+                            self._consecutive_failures += 1
+                            delay = min(
+                                self._backoff_base * (2 ** self._consecutive_failures),
+                                self._backoff_max,
+                            )
+                            await asyncio.sleep(delay + random.uniform(0, delay * 0.1))
+                    if has_sentinel:
+                        logger.info("shutdown_sentinel_received")
+                        return
+            except Exception:
+                logger.exception("worker_fatal_error")
+                self._consecutive_failures += 1
+                delay = min(
+                    self._backoff_base * (2 ** self._consecutive_failures),
+                    self._backoff_max,
+                )
+                await asyncio.sleep(delay + random.uniform(0, delay * 0.1))
+                logger.info("worker_restarting")
 
     def _split_sentinel(self, batch: list) -> tuple[list, bool]:
         for i, item in enumerate(batch):
