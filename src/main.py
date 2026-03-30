@@ -27,6 +27,7 @@ logger = get_logger(component="main")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    configure_logging()
     settings = app.state.settings
 
     # Use override for testing, else create fresh
@@ -75,7 +76,6 @@ async def lifespan(app: FastAPI):
     # Expose redis_client for RateLimitMiddleware (it reads app.state.redis_client)
     app.state.redis_client = db.redis_client
 
-    configure_logging()
     logger.info("startup_complete")
 
     yield
