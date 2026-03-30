@@ -98,7 +98,7 @@ class AnalyticsService:
             start_date=query.start_date,
             end_date=query.end_date,
         )
-        cursor = self._collection.aggregate(pipeline)
+        cursor = await self._collection.aggregate(pipeline)
         return await cursor.to_list(None)
 
     async def get_realtime_stats(self, query: RealtimeStatsQuery) -> list[dict]:
@@ -120,7 +120,7 @@ class AnalyticsService:
             start_date=start_date,
         )
 
-        cursor = self._collection.aggregate(pipeline)
+        cursor = await self._collection.aggregate(pipeline)
         result = await cursor.to_list(None)
 
         await self._cache.set(cache_key, result, ttl=self._settings.realtime_stats_ttl)

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Request
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from src.core.exceptions import QueueFullError
 from src.events.dependencies import get_event_filter
@@ -11,13 +10,13 @@ router = APIRouter()
 
 
 @router.post("/events", status_code=202)
-async def create_event(event: EventCreate, request: Request) -> EventAccepted | JSONResponse:
+async def create_event(event: EventCreate, request: Request) -> EventAccepted:
     try:
         await request.app.state.event_service.enqueue_event(event)
     except QueueFullError:
-        return JSONResponse(
+        raise HTTPException(
             status_code=503,
-            content={"detail": "Event queue is at capacity"},
+            detail="Event queue is at capacity",
         )
     return EventAccepted(**event.model_dump())
 
