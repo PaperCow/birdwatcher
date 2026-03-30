@@ -1,67 +1,80 @@
 from __future__ import annotations
 import asyncio
-from src.queue.base import QueueMessage
+from src.queue.base import QueueMessage, ReceivedMessage
+from src.queue.dlq import DeadLetterQueue
+from src.core.exceptions import QueueFullError
+from src.core.logging import get_logger
+
+logger = get_logger(component="queue")
 
 SENTINEL = object()
 
 
 class InMemoryQueue:
-    def __init__(self, maxsize: int, dlq, max_retries: int = 5):
+    def __init__(self, maxsize: int, max_retries: int = 5, dlq_maxsize: int = 1000):
         self._queue: asyncio.Queue = asyncio.Queue(maxsize=maxsize)
-        self._dlq = dlq
+        self._dlq = DeadLetterQueue(maxsize=dlq_maxsize)
         self._max_retries = max_retries
+        self._in_flight: dict[str, QueueMessage] = {}
 
     async def enqueue(self, message: QueueMessage) -> None:
-        self._queue.put_nowait(message)  # raises asyncio.QueueFull
+        try:
+            self._queue.put_nowait(message)
+        except asyncio.QueueFull:
+            raise QueueFullError("Event queue is at capacity")
 
-    async def drain(self, max_items: int, timeout: float) -> list:
-        # First get blocks (avoids busy-wait on empty queue), rest are non-blocking (fill batch immediately)
-        items = []
+    async def drain(self, max_items: int, timeout: float) -> list[ReceivedMessage]:
+        items: list[ReceivedMessage] = []
         try:
             first = await asyncio.wait_for(self._queue.get(), timeout=timeout)
-            items.append(first)
             if first is SENTINEL:
                 return items
+            receipt_handle = first.message_id
+            self._in_flight[receipt_handle] = first
+            items.append(ReceivedMessage(queue_message=first, receipt_handle=receipt_handle))
         except asyncio.TimeoutError:
             return items
 
         while len(items) < max_items:
             try:
                 item = self._queue.get_nowait()
-                items.append(item)
                 if item is SENTINEL:
                     return items
+                receipt_handle = item.message_id
+                self._in_flight[receipt_handle] = item
+                items.append(ReceivedMessage(queue_message=item, receipt_handle=receipt_handle))
             except asyncio.QueueEmpty:
                 break
         return items
 
-    async def ack(self, message_id: str) -> None:
+    async def ack(self, receipt_handle: str) -> None:
+        self._in_flight.pop(receipt_handle, None)
         self._queue.task_done()
 
-    async def nack(self, message: QueueMessage, error: str) -> None:
+    async def nack(self, receipt_handle: str) -> None:
+        message = self._in_flight.pop(receipt_handle, None)
+        if message is None:
+            logger.warning("nack_unknown_receipt_handle", receipt_handle=receipt_handle)
+            return
         message.retry_count += 1
-        message.last_error = error
-        message.error_history.append(error)
         self._queue.task_done()
 
         if message.retry_count >= self._max_retries:
             await self._dlq.put(message)
             return
-        # Non-blocking: blocking put would deadlock (worker is the only consumer). DLQ on overflow.
         try:
             self._queue.put_nowait(message)
         except asyncio.QueueFull:
             await self._dlq.put(message)
 
-    def qsize(self) -> int:
+    async def qsize(self) -> int:
         return self._queue.qsize()
+
+    def dlq_qsize(self) -> int:
+        return self._dlq.qsize()
 
     async def join(self) -> None:
         await self._queue.join()
 
     async def shutdown(self) -> None:
         await self._queue.put(SENTINEL)
-
-    @property
-    def sentinel(self):
-        return SENTINEL
