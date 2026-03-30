@@ -6,7 +6,7 @@ logger = get_logger(component="rate_limiter")
 
 
 class RateLimitMiddleware:
-    """ASGI middleware implementing Redis-backed sliding window rate limiting.
+    """ASGI middleware implementing Redis-backed fixed window rate limiting.
 
     Limits requests per client IP using a Redis counter with TTL.
     Fails open on Redis errors (requests pass through).
