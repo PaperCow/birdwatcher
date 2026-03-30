@@ -51,6 +51,7 @@ class TestEventServiceQuery:
     async def test_query_builds_filter(self):
         mock_cursor = AsyncMock()
         mock_cursor.to_list = AsyncMock(return_value=[])
+        mock_cursor.sort = MagicMock(return_value=mock_cursor)
         mock_cursor.skip = MagicMock(return_value=mock_cursor)
         mock_cursor.limit = MagicMock(return_value=mock_cursor)
 
@@ -68,6 +69,7 @@ class TestEventServiceQuery:
     async def test_query_applies_pagination(self):
         mock_cursor = AsyncMock()
         mock_cursor.to_list = AsyncMock(return_value=[])
+        mock_cursor.sort = MagicMock(return_value=mock_cursor)
         mock_cursor.skip = MagicMock(return_value=mock_cursor)
         mock_cursor.limit = MagicMock(return_value=mock_cursor)
 

@@ -21,6 +21,6 @@ class CacheService:
 
     async def set(self, key: str, value: dict, ttl: int | None = None) -> None:
         try:
-            await self._redis.set(key, orjson.dumps(value), ex=ttl or self._default_ttl)
+            await self._redis.set(key, orjson.dumps(value), ex=ttl if ttl is not None else self._default_ttl)
         except Exception as e:
             logger.warning("cache_set_error", key=key, error=str(e))

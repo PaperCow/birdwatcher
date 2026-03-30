@@ -49,7 +49,7 @@ class EventService:
                 ts_filter["$lte"] = filters.end_date
             query["timestamp"] = ts_filter
 
-        cursor = self._collection.find(query)
+        cursor = self._collection.find(query).sort("timestamp", -1)
         cursor = cursor.skip(filters.skip)
         cursor = cursor.limit(filters.limit)
         return await cursor.to_list(length=filters.limit)
