@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 
 from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
 
 router = APIRouter()
 
@@ -41,7 +42,7 @@ async def health_check(request: Request) -> dict:
     else:
         status = "healthy"
 
-    return {
+    body = {
         "status": status,
         "dependencies": {
             "mongodb": "up" if mongodb_ok else "down",
@@ -54,3 +55,5 @@ async def health_check(request: Request) -> dict:
             "dlq_depth": dlq_depth,
         },
     }
+    http_status = 503 if status == "unhealthy" else 200
+    return JSONResponse(content=body, status_code=http_status)
