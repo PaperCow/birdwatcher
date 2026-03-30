@@ -140,7 +140,7 @@ class EventWorker:
         assert isinstance(errors, list)
         failed_map: dict[str, int] = {}
         for err_item in errors:
-            action_type = list(err_item.keys())[0]
+            action_type = next(iter(err_item))
             detail = err_item[action_type]
             failed_map[detail["_id"]] = detail["status"]
 
