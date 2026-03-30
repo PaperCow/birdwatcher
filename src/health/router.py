@@ -15,7 +15,6 @@ async def health_check(request: Request) -> dict:
     db = state.db
     worker = state.worker
     queue = state.queue
-    dlq = state.dlq
     settings = state.settings
 
     # Check dependencies concurrently
@@ -25,8 +24,8 @@ async def health_check(request: Request) -> dict:
 
     # Check pipeline
     worker_alive = worker.is_alive()
-    queue_depth = queue.qsize()
-    dlq_depth = dlq.qsize()
+    queue_depth = await queue.qsize()
+    dlq_depth = queue.dlq_qsize()
 
     # unhealthy: core function unavailable (MongoDB is source of truth, worker processes events)
     # degraded: partial feature loss (ES=search only, Redis=cache+rate limiting, DLQ/queue=pipeline pressure)
