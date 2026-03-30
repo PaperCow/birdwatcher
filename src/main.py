@@ -17,7 +17,6 @@ from src.events.router import router as events_router
 from src.events.service import EventService
 from src.health.router import router as health_router
 from src.ingestion.worker import EventWorker
-from src.queue.dlq import DeadLetterQueue
 from src.queue.memory import InMemoryQueue
 from src.search.router import router as search_router
 from src.search.service import SearchService
@@ -39,8 +38,11 @@ async def lifespan(app: FastAPI):
     await db.create_indexes()
 
     # Queue system
-    dlq = DeadLetterQueue(maxsize=settings.dlq_max_size)
-    queue = InMemoryQueue(maxsize=settings.queue_max_size, dlq=dlq, max_retries=settings.max_retries)
+    queue = InMemoryQueue(
+        maxsize=settings.queue_max_size,
+        max_retries=settings.max_retries,
+        dlq_maxsize=settings.dlq_max_size,
+    )
 
     # Services
     assert db.mongo_db is not None
@@ -50,24 +52,23 @@ async def lifespan(app: FastAPI):
     search_service = SearchService(es_client=db.es_client, index=settings.elasticsearch_index)
 
     # Worker
+    shutdown_event = asyncio.Event()
     worker = EventWorker(
         queue=queue,
-        dlq=dlq,
         mongo_collection=db.mongo_db["events"],
         es_client=db.es_client,
         es_index=settings.elasticsearch_index,
         batch_size=settings.batch_size,
         batch_timeout=settings.batch_timeout,
-        max_retries=settings.max_retries,
         backoff_base=settings.backoff_base,
         backoff_max=settings.backoff_max,
+        shutdown_event=shutdown_event,
     )
     worker_task = asyncio.create_task(worker.run())
 
     # Store on app.state
     app.state.db = db
     app.state.queue = queue
-    app.state.dlq = dlq
     app.state.event_service = event_service
     app.state.analytics_service = analytics_service
     app.state.search_service = search_service
@@ -82,7 +83,7 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info("shutdown_started")
-    await queue.shutdown()
+    shutdown_event.set()
     try:
         await asyncio.wait_for(worker_task, timeout=10.0)
     except asyncio.TimeoutError:
