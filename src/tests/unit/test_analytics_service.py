@@ -80,7 +80,7 @@ class TestRealtimeStats:
         mock_cursor = AsyncMock()
         mock_cursor.to_list = AsyncMock(return_value=[{"count": 10}])
         collection = AsyncMock()
-        collection.aggregate = MagicMock(return_value=mock_cursor)
+        collection.aggregate = AsyncMock(return_value=mock_cursor)
 
         service = AnalyticsService(collection=collection, cache=cache, settings=MagicMock(realtime_stats_ttl=30))
         result = await service.get_realtime_stats(RealtimeStatsQuery())
