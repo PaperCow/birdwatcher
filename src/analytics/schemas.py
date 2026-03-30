@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Optional
 
@@ -29,16 +29,21 @@ class StatsQuery(BaseModel):
 
     @model_validator(mode="after")
     def validate_date_range(self) -> StatsQuery:
-        if self.start_date is None or self.end_date is None:
-            return self
         settings = get_settings()
-        # Cap output size: e.g. hourly over 7 days = ~168 buckets vs hourly over 365 days = ~8760
         max_days_map = {
             TimeBucket.HOURLY: settings.hourly_max_days,
             TimeBucket.DAILY: settings.daily_max_days,
             TimeBucket.WEEKLY: settings.weekly_max_days,
         }
         max_days = max_days_map[self.time_bucket]
+
+        # Default missing bounds so queries are always bounded
+        if self.end_date is None:
+            self.end_date = datetime.now(timezone.utc)
+        if self.start_date is None:
+            self.start_date = self.end_date - timedelta(days=max_days)
+
+        # Cap output size: e.g. hourly over 7 days = ~168 buckets vs hourly over 365 days = ~8760
         range_days = (self.end_date - self.start_date).days
         if range_days > max_days:
             raise ValueError(
