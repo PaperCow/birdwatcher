@@ -20,11 +20,9 @@ def extract_metadata_text(metadata: dict) -> str:
         elif isinstance(obj, list):
             for item in obj:
                 _walk(item)
-        elif obj is None:
+        elif obj is None or isinstance(obj, bool):
             return
         else:
-            # Note: booleans are indexed as "True"/"False" strings. Consider
-            # filtering them out if this causes noisy search results.
             values.append(str(obj))
 
     _walk(metadata)
