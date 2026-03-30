@@ -1,131 +1,167 @@
 import asyncio
 import pytest
-from src.queue.base import QueueMessage
-from src.queue.memory import InMemoryQueue, SENTINEL
-from src.queue.dlq import DeadLetterQueue
+from src.queue.base import QueueMessage, ReceivedMessage
+from src.queue.memory import InMemoryQueue
+from src.core.exceptions import QueueFullError
+
 
 def _msg(key="k1", **overrides):
     kwargs = dict(payload={"idempotency_key": key, "event_type": "click"})
     kwargs.update(overrides)
     return QueueMessage(**kwargs)
 
+
 @pytest.mark.unit
 class TestInMemoryQueueBasics:
     async def test_enqueue_and_drain_ordering(self):
-        dlq = DeadLetterQueue(maxsize=10)
-        q = InMemoryQueue(maxsize=10, dlq=dlq, max_retries=3)
+        q = InMemoryQueue(maxsize=10, max_retries=3)
         m1, m2 = _msg("a"), _msg("b")
         await q.enqueue(m1)
         await q.enqueue(m2)
         batch = await q.drain(max_items=10, timeout=1.0)
-        assert [m.payload["idempotency_key"] for m in batch] == ["a", "b"]
+        assert [r.queue_message.payload["idempotency_key"] for r in batch] == ["a", "b"]
+
+    async def test_drain_returns_received_messages(self):
+        q = InMemoryQueue(maxsize=10, max_retries=3)
+        msg = _msg("a")
+        await q.enqueue(msg)
+        batch = await q.drain(max_items=10, timeout=1.0)
+        assert len(batch) == 1
+        assert isinstance(batch[0], ReceivedMessage)
+        assert batch[0].receipt_handle == msg.message_id
+        assert batch[0].queue_message is msg
 
     async def test_drain_respects_max_items(self):
-        dlq = DeadLetterQueue(maxsize=10)
-        q = InMemoryQueue(maxsize=10, dlq=dlq, max_retries=3)
+        q = InMemoryQueue(maxsize=10, max_retries=3)
         for i in range(5):
             await q.enqueue(_msg(f"k{i}"))
         batch = await q.drain(max_items=3, timeout=1.0)
         assert len(batch) == 3
 
     async def test_drain_returns_empty_on_timeout(self):
-        dlq = DeadLetterQueue(maxsize=10)
-        q = InMemoryQueue(maxsize=10, dlq=dlq, max_retries=3)
+        q = InMemoryQueue(maxsize=10, max_retries=3)
         batch = await q.drain(max_items=10, timeout=0.1)
         assert batch == []
 
     async def test_enqueue_raises_when_full(self):
-        dlq = DeadLetterQueue(maxsize=10)
-        q = InMemoryQueue(maxsize=2, dlq=dlq, max_retries=3)
+        q = InMemoryQueue(maxsize=2, max_retries=3)
         await q.enqueue(_msg("a"))
         await q.enqueue(_msg("b"))
-        with pytest.raises(asyncio.QueueFull):
+        with pytest.raises(QueueFullError):
             await q.enqueue(_msg("c"))
 
     async def test_qsize(self):
-        dlq = DeadLetterQueue(maxsize=10)
-        q = InMemoryQueue(maxsize=10, dlq=dlq, max_retries=3)
-        assert q.qsize() == 0
+        q = InMemoryQueue(maxsize=10, max_retries=3)
+        assert await q.qsize() == 0
         await q.enqueue(_msg())
-        assert q.qsize() == 1
-
-    async def test_sentinel_in_drain(self):
-        dlq = DeadLetterQueue(maxsize=10)
-        q = InMemoryQueue(maxsize=10, dlq=dlq, max_retries=3)
-        await q.enqueue(_msg("before"))
-        await q.shutdown()
-        batch = await q.drain(max_items=10, timeout=1.0)
-        # batch contains the message then the sentinel
-        assert batch[0].payload["idempotency_key"] == "before"
-        assert batch[1] is SENTINEL
+        assert await q.qsize() == 1
 
     async def test_ack_calls_task_done(self):
-        dlq = DeadLetterQueue(maxsize=10)
-        q = InMemoryQueue(maxsize=10, dlq=dlq, max_retries=3)
+        q = InMemoryQueue(maxsize=10, max_retries=3)
         msg = _msg()
         await q.enqueue(msg)
-        await q.drain(max_items=1, timeout=1.0)
-        await q.ack(msg.message_id)
-        # join() should return immediately since all tasks are done
+        batch = await q.drain(max_items=1, timeout=1.0)
+        await q.ack(batch[0].receipt_handle)
         await asyncio.wait_for(q.join(), timeout=1.0)
 
-
-@pytest.mark.unit
-class TestDeadLetterQueue:
-    async def test_put_and_get(self):
-        dlq = DeadLetterQueue(maxsize=10)
+    async def test_ack_removes_from_in_flight(self):
+        q = InMemoryQueue(maxsize=10, max_retries=3)
         msg = _msg()
-        await dlq.put(msg)
-        assert dlq.qsize() == 1
-        got = await dlq.get()
-        assert got.message_id == msg.message_id
+        await q.enqueue(msg)
+        batch = await q.drain(max_items=1, timeout=1.0)
+        assert len(q._in_flight) == 1
+        await q.ack(batch[0].receipt_handle)
+        assert len(q._in_flight) == 0
 
-    async def test_overflow_drops_message(self, capsys):
-        dlq = DeadLetterQueue(maxsize=1)
-        await dlq.put(_msg("first"))
-        await dlq.put(_msg("dropped"))  # should log, not raise
-        assert dlq.qsize() == 1
+    async def test_drain_populates_in_flight(self):
+        q = InMemoryQueue(maxsize=10, max_retries=3)
+        await q.enqueue(_msg("a"))
+        await q.enqueue(_msg("b"))
+        batch = await q.drain(max_items=10, timeout=1.0)
+        assert len(q._in_flight) == 2
+        for r in batch:
+            assert r.receipt_handle in q._in_flight
 
 
 @pytest.mark.unit
 class TestNackRouting:
     async def test_nack_increments_retry(self):
-        dlq = DeadLetterQueue(maxsize=10)
-        q = InMemoryQueue(maxsize=10, dlq=dlq, max_retries=3)
+        q = InMemoryQueue(maxsize=10, max_retries=3)
         msg = _msg()
         await q.enqueue(msg)
-        await q.drain(max_items=1, timeout=1.0)
-        await q.nack(msg, "err")
+        batch = await q.drain(max_items=1, timeout=1.0)
+        await q.nack(batch[0].receipt_handle)
         assert msg.retry_count == 1
-        assert msg.error_history == ["err"]
 
     async def test_nack_requeues(self):
-        dlq = DeadLetterQueue(maxsize=10)
-        q = InMemoryQueue(maxsize=10, dlq=dlq, max_retries=3)
+        q = InMemoryQueue(maxsize=10, max_retries=3)
         msg = _msg()
         await q.enqueue(msg)
-        await q.drain(max_items=1, timeout=1.0)
-        await q.nack(msg, "err")
-        assert q.qsize() == 1  # back in queue
+        batch = await q.drain(max_items=1, timeout=1.0)
+        await q.nack(batch[0].receipt_handle)
+        assert await q.qsize() == 1
+
+    async def test_nack_removes_from_in_flight(self):
+        q = InMemoryQueue(maxsize=10, max_retries=3)
+        msg = _msg()
+        await q.enqueue(msg)
+        batch = await q.drain(max_items=1, timeout=1.0)
+        assert len(q._in_flight) == 1
+        await q.nack(batch[0].receipt_handle)
+        assert len(q._in_flight) == 0
 
     async def test_nack_max_retries_routes_to_dlq(self):
-        dlq = DeadLetterQueue(maxsize=10)
-        q = InMemoryQueue(maxsize=10, dlq=dlq, max_retries=2)
+        q = InMemoryQueue(maxsize=10, max_retries=2)
         msg = _msg()
-        msg.retry_count = 1  # one retry already
+        msg.retry_count = 1
         await q.enqueue(msg)
-        await q.drain(max_items=1, timeout=1.0)
-        await q.nack(msg, "final-err")
-        assert dlq.qsize() == 1
-        assert q.qsize() == 0
+        batch = await q.drain(max_items=1, timeout=1.0)
+        await q.nack(batch[0].receipt_handle)
+        assert q.dlq_qsize() == 1
+        assert await q.qsize() == 0
 
     async def test_nack_full_queue_routes_to_dlq(self):
-        dlq = DeadLetterQueue(maxsize=10)
-        q = InMemoryQueue(maxsize=1, dlq=dlq, max_retries=5)
+        q = InMemoryQueue(maxsize=1, max_retries=5)
         msg = _msg("original")
         await q.enqueue(msg)
-        await q.drain(max_items=1, timeout=1.0)
-        # Fill queue so nack can't re-enqueue
+        batch = await q.drain(max_items=1, timeout=1.0)
         await q.enqueue(_msg("filler"))
-        await q.nack(msg, "err")
-        assert dlq.qsize() == 1  # routed to DLQ
+        await q.nack(batch[0].receipt_handle)
+        assert q.dlq_qsize() == 1
+
+    async def test_nack_unknown_receipt_handle_is_noop(self):
+        q = InMemoryQueue(maxsize=10, max_retries=3)
+        await q.nack("nonexistent")  # should not raise
+
+
+@pytest.mark.unit
+class TestShutdown:
+    async def test_shutdown_ends_drain(self):
+        q = InMemoryQueue(maxsize=10, max_retries=3)
+        await q.enqueue(_msg("before"))
+        await q.shutdown()
+        batch = await q.drain(max_items=10, timeout=1.0)
+        assert len(batch) == 1
+        assert batch[0].queue_message.payload["idempotency_key"] == "before"
+
+    async def test_shutdown_empty_queue(self):
+        q = InMemoryQueue(maxsize=10, max_retries=3)
+        await q.shutdown()
+        batch = await q.drain(max_items=10, timeout=1.0)
+        assert batch == []
+
+
+@pytest.mark.unit
+class TestDlqInternal:
+    async def test_dlq_qsize_starts_at_zero(self):
+        q = InMemoryQueue(maxsize=10, max_retries=3)
+        assert q.dlq_qsize() == 0
+
+    async def test_dlq_receives_exhausted_messages(self):
+        q = InMemoryQueue(maxsize=10, max_retries=1)
+        msg = _msg()
+        await q.enqueue(msg)
+        batch = await q.drain(max_items=1, timeout=1.0)
+        await q.nack(batch[0].receipt_handle)
+        assert q.dlq_qsize() == 1
+        assert await q.qsize() == 0
