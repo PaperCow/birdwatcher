@@ -1,5 +1,6 @@
 import pytest
 from datetime import datetime, timezone, timedelta
+from src.config import get_settings
 from src.events.schemas import EventCreate, EventAccepted, EventResponse, EventFilter
 
 @pytest.mark.unit
@@ -156,9 +157,12 @@ class TestStatsQuery:
                 end_date=datetime.now(timezone.utc),
             )
 
-    def test_no_date_range_ok(self):
+    def test_no_date_range_defaults_applied(self):
         q = StatsQuery(time_bucket=TimeBucket.WEEKLY)
-        assert q.start_date is None
+        assert q.start_date is not None
+        assert q.end_date is not None
+        span = (q.end_date - q.start_date).days
+        assert span == get_settings().weekly_max_days
 
 
 @pytest.mark.unit

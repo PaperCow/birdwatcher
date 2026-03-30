@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Awaitable, cast
 
 import redis.asyncio as aioredis
-from elasticsearch import AsyncElasticsearch, BadRequestError
+from elasticsearch import AsyncElasticsearch
 from pymongo import AsyncMongoClient
 from pymongo.asynchronous.database import AsyncDatabase
 
@@ -58,14 +58,12 @@ class DatabaseManager:
         await collection.create_index("timestamp")
         logger.info("mongodb_indexes_created")
 
-        # Explicit mapping at startup prevents dynamic mapping on first write. BadRequestError = already exists.
-        try:
+        # Explicit mapping at startup prevents dynamic mapping on first write.
+        if not await self.es_client.indices.exists(index=self.settings.elasticsearch_index):
             await self.es_client.indices.create(
                 index=self.settings.elasticsearch_index,
                 mappings=ES_MAPPING,
             )
-        except BadRequestError:
-            pass
         logger.info(
             "elasticsearch_index_created",
             index=self.settings.elasticsearch_index,
