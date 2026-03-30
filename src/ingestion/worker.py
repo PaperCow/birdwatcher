@@ -66,22 +66,22 @@ class EventWorker:
                             for msg in real_batch:
                                 await self._queue.nack(msg, str(e))
                             # Backoff is per-batch-cycle, not per-message: asyncio.Queue has no delayed delivery.
-                            self._consecutive_failures += 1
                             delay = min(
                                 self._backoff_base * (2 ** self._consecutive_failures),
                                 self._backoff_max,
                             )
+                            self._consecutive_failures += 1
                             await asyncio.sleep(delay + random.uniform(0, delay * 0.1))
                     if has_sentinel:
                         logger.info("shutdown_sentinel_received")
                         return
             except Exception:
                 logger.exception("worker_fatal_error")
-                self._consecutive_failures += 1
                 delay = min(
                     self._backoff_base * (2 ** self._consecutive_failures),
                     self._backoff_max,
                 )
+                self._consecutive_failures += 1
                 await asyncio.sleep(delay + random.uniform(0, delay * 0.1))
                 logger.info("worker_restarting")
 
