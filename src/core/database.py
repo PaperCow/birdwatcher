@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from typing import Awaitable, cast
+
 import redis.asyncio as aioredis
 from elasticsearch import AsyncElasticsearch, BadRequestError
 from pymongo import AsyncMongoClient
+from pymongo.asynchronous.database import AsyncDatabase
 
 from src.config import Settings
 from src.core.logging import get_logger
@@ -25,7 +28,7 @@ class DatabaseManager:
     def __init__(self, settings: Settings):
         self.settings = settings
         self.mongo_client: AsyncMongoClient | None = None
-        self.mongo_db = None
+        self.mongo_db: AsyncDatabase | None = None
         self.es_client: AsyncElasticsearch | None = None
         self.redis_client: aioredis.Redis | None = None
 
@@ -42,6 +45,9 @@ class DatabaseManager:
         )
 
     async def create_indexes(self) -> None:
+        if self.mongo_db is None or self.es_client is None:
+            raise RuntimeError("DatabaseManager is not connected")
+
         collection = self.mongo_db["events"]
 
         # MongoDB indexes (idempotent)
@@ -67,13 +73,15 @@ class DatabaseManager:
 
     async def close(self) -> None:
         if self.mongo_client:
-            self.mongo_client.close()
+            await self.mongo_client.close()
         if self.es_client:
             await self.es_client.close()
         if self.redis_client:
             await self.redis_client.aclose()
 
     async def check_mongodb(self) -> bool:
+        if self.mongo_client is None:
+            return False
         try:
             await self.mongo_client.admin.command("ping")
             return True
@@ -81,13 +89,18 @@ class DatabaseManager:
             return False
 
     async def check_elasticsearch(self) -> bool:
+        if self.es_client is None:
+            return False
         try:
             return await self.es_client.ping()
         except Exception:
             return False
 
     async def check_redis(self) -> bool:
+        if self.redis_client is None:
+            return False
         try:
-            return await self.redis_client.ping()
+            # redis typestub returns Union[Awaitable[bool], bool]; async client always returns Awaitable
+            return await cast(Awaitable[bool], self.redis_client.ping())
         except Exception:
             return False

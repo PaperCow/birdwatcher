@@ -125,6 +125,8 @@ class EventWorker:
             raise_on_error=False,
             raise_on_exception=False,
         )
+        # async_bulk returns Union[int, List] but is always List when stats_only=False (the default)
+        assert isinstance(errors, list)
         failed_map: dict[str, int] = {}
         for err_item in errors:
             action_type = list(err_item.keys())[0]

@@ -23,6 +23,7 @@ dev = [
     "asgi-lifespan>=2.1.0",
     "fakeredis>=2.34.0",
     "testcontainers[mongodb,elasticsearch]>=4.14.0",
+    "pyright>=1.1.390",
 ]
 
 [build-system]
@@ -36,6 +37,14 @@ markers = [
     "integration: integration tests (require Docker)",
 ]
 testpaths = ["src/tests"]
+
+[tool.pyright]
+include = ["src"]
+exclude = ["src/tests"]
+venvPath = "."
+venv = ".venv"
+pythonVersion = "3.13"
+typeCheckingMode = "standard"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src"]

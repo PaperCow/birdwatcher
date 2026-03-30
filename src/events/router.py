@@ -11,7 +11,7 @@ router = APIRouter()
 
 
 @router.post("/events", status_code=202)
-async def create_event(event: EventCreate, request: Request) -> EventAccepted:
+async def create_event(event: EventCreate, request: Request) -> EventAccepted | JSONResponse:
     try:
         await request.app.state.event_service.enqueue_event(event)
     except QueueFullError:

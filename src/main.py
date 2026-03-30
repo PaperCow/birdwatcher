@@ -42,6 +42,7 @@ async def lifespan(app: FastAPI):
     queue = InMemoryQueue(maxsize=settings.queue_max_size, dlq=dlq, max_retries=settings.max_retries)
 
     # Services
+    assert db.mongo_db is not None
     cache = CacheService(db.redis_client, default_ttl=settings.realtime_stats_ttl)
     event_service = EventService(queue=queue, collection=db.mongo_db["events"])
     analytics_service = AnalyticsService(collection=db.mongo_db["events"], cache=cache, settings=settings)
