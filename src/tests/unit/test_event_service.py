@@ -1,4 +1,3 @@
-import asyncio
 import pytest
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
@@ -40,7 +39,7 @@ class TestEventServiceEnqueue:
 
     async def test_enqueue_raises_queue_full(self):
         queue = AsyncMock()
-        queue.enqueue = AsyncMock(side_effect=asyncio.QueueFull())
+        queue.enqueue = AsyncMock(side_effect=QueueFullError("Event queue is at capacity"))
         service = EventService(queue=queue, collection=AsyncMock())
         with pytest.raises(QueueFullError):
             await service.enqueue_event(_event())

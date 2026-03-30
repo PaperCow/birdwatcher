@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 from datetime import datetime, timezone
 from typing import Any
 
@@ -25,10 +24,7 @@ class EventService:
         # Set at acceptance time (not persistence time) for consistent TTL semantics
         payload["created_at"] = datetime.now(timezone.utc)
         message = QueueMessage(payload=payload)
-        try:
-            await self._queue.enqueue(message)
-        except asyncio.QueueFull:
-            raise QueueFullError("Event queue is at capacity")
+        await self._queue.enqueue(message)
         return message
 
     async def query_events(self, filters: EventFilter) -> list[dict[str, Any]]:
