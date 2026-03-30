@@ -22,11 +22,11 @@ def _check_depth(obj: Any, current: int = 1, max_depth: int = 10) -> None:
 
 
 class EventCreate(BaseModel):
-    idempotency_key: str
-    event_type: str
+    idempotency_key: str = Field(max_length=256)
+    event_type: str = Field(max_length=256)
     timestamp: AwareDatetime
-    user_id: str
-    source_url: str
+    user_id: str = Field(max_length=256)
+    source_url: str = Field(max_length=2048)
     metadata: Optional[dict[str, Any]] = None
 
     @field_validator("metadata")
