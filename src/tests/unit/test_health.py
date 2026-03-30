@@ -25,11 +25,9 @@ def _make_app(
     worker = MagicMock()
     worker.is_alive.return_value = worker_alive
 
-    queue = MagicMock()
-    queue.qsize.return_value = queue_depth
-
-    dlq = MagicMock()
-    dlq.qsize.return_value = dlq_depth
+    queue = AsyncMock()
+    queue.qsize = AsyncMock(return_value=queue_depth)
+    queue.dlq_qsize = MagicMock(return_value=dlq_depth)
 
     settings = MagicMock()
     settings.queue_max_size = queue_max_size
@@ -38,7 +36,6 @@ def _make_app(
         request.app.state.db = db
         request.app.state.worker = worker
         request.app.state.queue = queue
-        request.app.state.dlq = dlq
         request.app.state.settings = settings
         return await health_check(request)
 
