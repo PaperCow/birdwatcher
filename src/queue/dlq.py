@@ -7,6 +7,14 @@ logger = get_logger(component="dlq")
 
 
 class DeadLetterQueue:
+    """In-memory dead letter queue for messages that exhaust retries.
+
+    Limitations: messages are not persisted and are lost on restart, and there
+    is no mechanism to inspect or redrive them. These are acceptable trade-offs
+    for the current in-memory queue implementation — when the queue system moves
+    to SQS, DLQ visibility and redrive will be handled natively.
+    """
+
     def __init__(self, maxsize: int):
         self._queue: asyncio.Queue[QueueMessage] = asyncio.Queue(maxsize=maxsize)
 
