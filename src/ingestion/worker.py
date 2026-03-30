@@ -64,6 +64,7 @@ class EventWorker:
                         logger.error("batch_level_failure", error=str(e))
                         for msg in real_batch:
                             await self._queue.nack(msg, str(e))
+                        # Backoff is per-batch-cycle, not per-message: asyncio.Queue has no delayed delivery.
                         self._consecutive_failures += 1
                         delay = min(
                             self._backoff_base * (2 ** self._consecutive_failures),
@@ -101,6 +102,7 @@ class EventWorker:
         succeeded = list(batch)
         failed: list[tuple[QueueMessage, str]] = []
         try:
+            # ordered=False: continue on error so all items are attempted; per-item results via BulkWriteError
             await self._mongo.insert_many(documents, ordered=False)
         except BulkWriteError as e:
             error_map: dict[int, int] = {}
@@ -112,7 +114,8 @@ class EventWorker:
                 if i not in error_map:
                     succeeded.append(msg)
                 elif error_map[i] == 11000:
-                    succeeded.append(msg)  # duplicate key = success
+                    # Duplicate key = already persisted (expected on retry via idempotency_key unique index)
+                    succeeded.append(msg)
                 else:
                     failed.append((msg, f"MongoDB error code {error_map[i]}"))
         return succeeded, failed
@@ -138,6 +141,7 @@ class EventWorker:
             if key not in failed_map:
                 await self._queue.ack(msg.message_id)
             else:
+                # 429 (rate limited) and 5xx are transient — retry. Other 4xx (e.g. mapping error) are permanent — DLQ immediately.
                 status = failed_map[key]
                 if status == 429 or status >= 500:
                     await self._queue.nack(msg, f"ES retryable status {status}")
@@ -163,7 +167,7 @@ class EventWorker:
         metadata = p.get("metadata") or {}
         return {
             "_index": self._es_index,
-            "_id": p["idempotency_key"],
+            "_id": p["idempotency_key"],  # Makes retries idempotent (ES upsert semantics)
             "event_type": p["event_type"],
             "timestamp": p["timestamp"],
             "user_id": p["user_id"],

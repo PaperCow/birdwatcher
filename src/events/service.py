@@ -22,6 +22,7 @@ class EventService:
         Raises QueueFullError if the underlying queue is at capacity.
         """
         payload = event.model_dump()
+        # Set at acceptance time (not persistence time) for consistent TTL semantics
         payload["created_at"] = datetime.now(timezone.utc)
         message = QueueMessage(payload=payload)
         try:

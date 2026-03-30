@@ -18,7 +18,7 @@ ES_MAPPING = {
         "timestamp": {"type": "date"},
         "user_id": {"type": "keyword"},
         "source_url": {"type": "keyword"},
-        "metadata": {"type": "flattened"},
+        "metadata": {"type": "flattened"},  # Prevents mapping explosion from arbitrary metadata keys
         "metadata_text": {"type": "text", "analyzer": "standard"},
     }
 }
@@ -58,7 +58,7 @@ class DatabaseManager:
         await collection.create_index("timestamp")
         logger.info("mongodb_indexes_created")
 
-        # ES index with explicit mapping (ignore if already exists)
+        # Explicit mapping at startup prevents dynamic mapping on first write. BadRequestError = already exists.
         try:
             await self.es_client.indices.create(
                 index=self.settings.elasticsearch_index,

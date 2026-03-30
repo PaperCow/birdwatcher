@@ -4,7 +4,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Any, Optional
 
 import orjson
-from pydantic import BaseModel, Field, field_validator
+from pydantic import AwareDatetime, BaseModel, Field, field_validator
 
 from src.config import get_settings
 
@@ -24,7 +24,7 @@ def _check_depth(obj: Any, current: int = 1, max_depth: int = 10) -> None:
 class EventCreate(BaseModel):
     idempotency_key: str
     event_type: str
-    timestamp: datetime
+    timestamp: AwareDatetime
     user_id: str
     source_url: str
     metadata: Optional[dict[str, Any]] = None

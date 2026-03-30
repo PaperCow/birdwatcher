@@ -25,7 +25,8 @@ async def health_check(request: Request) -> dict:
     queue_depth = queue.qsize()
     dlq_depth = dlq.qsize()
 
-    # Status logic
+    # unhealthy: core function unavailable (MongoDB is source of truth, worker processes events)
+    # degraded: partial feature loss (ES=search only, Redis=cache+rate limiting, DLQ/queue=pipeline pressure)
     if not mongodb_ok or not worker_alive:
         status = "unhealthy"
     elif (

@@ -32,6 +32,7 @@ class StatsQuery(BaseModel):
         if self.start_date is None or self.end_date is None:
             return self
         settings = get_settings()
+        # Cap output size: e.g. hourly over 7 days = ~168 buckets vs hourly over 365 days = ~8760
         max_days_map = {
             TimeBucket.HOURLY: settings.hourly_max_days,
             TimeBucket.DAILY: settings.daily_max_days,

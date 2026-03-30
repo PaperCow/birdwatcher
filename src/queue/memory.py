@@ -15,6 +15,7 @@ class InMemoryQueue:
         self._queue.put_nowait(message)  # raises asyncio.QueueFull
 
     async def drain(self, max_items: int, timeout: float) -> list:
+        # First get blocks (avoids busy-wait on empty queue), rest are non-blocking (fill batch immediately)
         items = []
         try:
             first = await asyncio.wait_for(self._queue.get(), timeout=timeout)
@@ -46,6 +47,7 @@ class InMemoryQueue:
         if message.retry_count >= self._max_retries:
             await self._dlq.put(message)
             return
+        # Non-blocking: blocking put would deadlock (worker is the only consumer). DLQ on overflow.
         try:
             self._queue.put_nowait(message)
         except asyncio.QueueFull:
