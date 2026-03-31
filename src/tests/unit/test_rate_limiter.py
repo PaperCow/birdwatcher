@@ -6,7 +6,7 @@ from starlette.testclient import TestClient
 from starlette.applications import Starlette
 from starlette.responses import PlainTextResponse
 from starlette.routing import Route
-from src.cache.middleware import RateLimitMiddleware
+from src.middleware.rate_limit import RateLimitMiddleware
 
 
 async def homepage(request):
