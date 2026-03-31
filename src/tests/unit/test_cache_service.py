@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import AsyncMock
 from fakeredis import FakeAsyncRedis
-from src.cache.service import CacheService
+from src.core.cache import CacheService
 
 
 @pytest.fixture

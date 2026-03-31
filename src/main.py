@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from src.analytics.router import router as analytics_router
 from src.analytics.service import AnalyticsService
 from src.cache.middleware import RateLimitMiddleware
-from src.cache.service import CacheService
+from src.core.cache import CacheService
 from src.config import Settings, get_settings
 from src.core.database import DatabaseManager
 from src.core.logging import configure_logging, get_logger
