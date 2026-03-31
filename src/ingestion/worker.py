@@ -9,7 +9,7 @@ from pymongo.errors import BulkWriteError
 from elasticsearch.helpers import async_bulk
 
 from src.queue.base import ReceivedMessage
-from src.search.service import extract_metadata_text
+from src.core.text import extract_metadata_text
 from src.core.logging import get_logger
 
 logger = get_logger(component="worker")

@@ -1,7 +1,8 @@
 import pytest
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
-from src.search.service import SearchService, extract_metadata_text
+from src.search.service import SearchService
+from src.core.text import extract_metadata_text
 
 
 @pytest.mark.unit
