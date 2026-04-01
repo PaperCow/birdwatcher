@@ -59,17 +59,14 @@ async def app(mongodb_url, es_url):
 
     application = create_app(settings=settings, db_manager=db)
 
-    async with LifespanManager(application) as manager:
-        yield manager.app
+    async with LifespanManager(application):
+        yield application
 
-    # Cleanup
-    await db.mongo_client.drop_database(settings.mongodb_database)
-    await db.es_client.options(ignore_status=[404]).indices.delete(
-        index=settings.elasticsearch_index
-    )
-    db.mongo_client.close()
-    await db.es_client.close()
-    await db.redis_client.aclose()
+        # Cleanup test data before lifespan shutdown closes clients
+        await db.mongo_client.drop_database(settings.mongodb_database)
+        await db.es_client.options(ignore_status=[404]).indices.delete(
+            index=settings.elasticsearch_index
+        )
 
 
 @pytest.fixture

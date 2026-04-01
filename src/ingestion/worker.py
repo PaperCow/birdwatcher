@@ -47,6 +47,7 @@ class EventWorker:
         return elapsed < staleness_seconds
 
     async def run(self) -> None:
+        self._last_heartbeat = datetime.now(timezone.utc)
         while True:
             try:
                 while not self._shutdown_event.is_set():

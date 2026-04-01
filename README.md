@@ -6,7 +6,15 @@ Distributed event processing platform. Accepts events via async ingestion pipeli
 
 ### Prerequisites
 
+- Python >= 3.13
+- [uv](https://docs.astral.sh/uv/getting-started/installation/) (manages Python versions and dependencies)
 - [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/install/) (v2)
+
+### Install Dependencies
+
+```bash
+uv sync --extra dev
+```
 
 ### Start
 
