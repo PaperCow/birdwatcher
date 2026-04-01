@@ -312,15 +312,15 @@ This project was built with Claude Code, using a combination of custom skills an
 
 ### How AI Was Used
 
-**Domain Research.** Claude Code was used to do domain research into best practices for similar systems, up-to-date library information, common pitfalls, etc. This was critical, as Claude Code training knowledge was out of date and wanted to use several out of date and deprecated libraries (see Where I Pushed Back section below)
+**Domain Research.** Claude Code was used to do domain research into best practices for similar systems, up-to-date library information, common pitfalls, etc. This was critical, as Claude Code training knowledge was out of date and wanted to use several deprecated libraries (see Where I Pushed Back section below)
 
-**Design iteration.** The system design went through 7 revisions. Each version was drafted collaboratively, then subjected to a structured review pass where Claude analyzed the design for gaps, contradictions, and unaddressed failure modes. This produced dozens of design revisions and issues caught — things like "graceful shutdown deadlocks if the worker is dead" and "no bounds validation on client-provided timestamps" — that were resolved before implementation began.
+**Design iteration.** The system design went through 7 revisions. Each version was drafted collaboratively, then subjected to a structured review pass where Claude analyzed the design for gaps, contradictions, and unaddressed failure modes. This produced dozens of design revisions and issues caught — things like "graceful shutdown deadlocks if the worker is dead" and "no bounds validation on client-provided timestamps" — that were resolved before implementation began. In the future I would have done this in a more structured way to ensure review decisions were properly scoped to the design phase, and was more strict about adhering to initial requirements, as I ended up having to refactor or change several things that were iterated on in this review cycle.
 
 **Implementation planning.** The final design was translated into a sequenced 22-task implementation plan with explicit file lists, step-by-step instructions, and test expectations for each task. Claude generated this plan from the design document, and I reviewed/adjusted the sequencing and scope.
 
 **Code generation with TDD.** Each task followed a test-first pattern: write tests for the expected behavior, then implement until they pass. Claude generated both the tests and implementation code, which I reviewed for correctness against the design document and library documentation.
 
-**After initial implementation.** Claude Code was used to actively seek out issues and gaps, finding a number of bugs as well as implementation misses.
+**After initial implementation.** Claude Code was used to actively seek out issues and gaps, finding a number of bugs as well as implementation misses. Additionally several refactors were done to address mistakes and poor organization/
 
 ### Where I Pushed Back
 
@@ -328,11 +328,13 @@ This project was built with Claude Code, using a combination of custom skills an
 
 **Library API changes.** Several generated code snippets used outdated APIs — for example, Elasticsearch bulk helper patterns from v7/v8 that don't work with v9's `BulkIndexError` exception handling, and `testcontainers` configuration patterns that changed between major versions. Each case required consulting the actual library source or docs to get correct, current usage.
 
-**Project Structure** Claude frequently confused some concepts, grouping code together that were separate modules. Claude leaned towards making several single use modules, such as a dedicated cache module for a single small redis helper.
+**Project Structure** Claude frequently confused some concepts, grouping code together that were separate modules. Claude leaned towards making modules that were single use or conflated ideas. For instance it made a cache module that had a single small redis helper and our rate-limiting middleware (which didn't belong there).
 
 **Over Engineering** Claude correctly identified several gaps and potential issues that would result in this project not being production ready, particularly around the use of an in-memory queue. Even with the in-memory queue being an explicit part of the project requirements, I frequently had to steer it away from over-engineering aspects that were out of scope.
 
 **Missing types and inconsistent use of type safety** Claude's implementation often skipped type definitions, or mistyped data. This prompted me to add pyright and do a manual pass to check types. This type checking caught a number of type issues, as well as some legitimate bugs.
+
+**Lack of code comments** A number of code iterations, fixes, and improvements lacked appropriate code comments in places where intention and reasoning were not clear. I did a separate pass after implementation with Claude to add code comments to address this.
 
 ### How It Shaped the Approach
 
