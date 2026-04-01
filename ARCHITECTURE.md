@@ -6,55 +6,33 @@ This document describes the system architecture of the Distributed Event Process
 
 ```
 Client
-  |
-  v
-POST /events --> Validate (Pydantic) --> asyncio.Queue (bounded)
-  |                                            |
-  v                                            v
-202 Accepted                              Worker (background asyncio.Task)
-(EventAccepted)                                |
-                                          Batch: drain up to N items
-                                          or flush on timeout
-                                               |
-                                               v
-                                          MongoDB (insert_many, ordered=False)
-                                          source of truth
-                                               |
-                                          per-item results
-                                          (BulkWriteError handling)
-                                               |
-                                          +----+----+
-                                     succeeded       failed
-                                     + deduped         |
-                                          |         nack / DLQ
-                                          v
-                                     Elasticsearch (async_bulk)
-                                     dual write, _id = idempotency_key
-                                          |
-                                     per-item results
-                                     (status code classification)
-                                          |
-                                     +----+----+
-                                succeeded    failed
-                                  |       +--+--+
-                                 ack   retryable  permanent
-                                       (429/5xx)  (4xx)
-                                          |         |
-                                        nack    ack + log
-                                          |
-                                          |  On max retries exceeded
-                                          |  OR nack fails (queue full)
-                                          v
-                                      DLQ (asyncio.Queue, bounded)
+  │
+  ▼
+API (FastAPI)
+  │ POST /events ──▶ 202 Accepted
+  │ validates, enqueues
+  │
+  ▼
+Queue (asyncio.Queue)
+  │ bounded, backpressure → 503
+  │
+  ▼
+Worker (background task)
+  │ drains batches
+  │
+  ├──▶ MongoDB (source of truth)
+  │      insert_many, dedup via unique index
+  │
+  ├──▶ Elasticsearch (search index)
+  │      async_bulk, idempotent via _id
+  │
+  └──▶ DLQ (failed after retries)
 
-GET /health -----------------> Check MongoDB + ES + Redis connectivity
-                               + queue depth, DLQ depth, worker liveness
-GET /events -----------------> MongoDB (filtered query)
-GET /events/stats -----------> MongoDB (aggregation pipeline)
-GET /events/search ----------> Elasticsearch (full-text search)
-GET /events/stats/realtime --> Redis cache --miss--> MongoDB aggregation
-                                                         |
-                                                    cache result
+Read paths:
+  GET /events, /stats  ──▶ MongoDB
+  GET /events/search   ──▶ Elasticsearch
+  GET /stats/realtime  ──▶ Redis cache ──miss──▶ MongoDB
+  GET /health          ──▶ all stores
 ```
 
 All writes go through the queue. The POST handler never touches MongoDB or Elasticsearch directly; it validates the input, enqueues the event, and returns 202 Accepted. The worker is the sole writer to both stores. Read endpoints query whichever store is appropriate: MongoDB for structured queries and aggregation, Elasticsearch for full-text and metadata search, Redis for cached realtime stats.
