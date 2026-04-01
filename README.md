@@ -125,7 +125,7 @@ Query persisted events from MongoDB with optional filters and pagination.
 | `user_id`    | string  | —       | Filter by user ID |
 | `source_url` | string  | —       | Filter by source URL |
 | `start_date` | datetime | —      | Inclusive lower bound on timestamp |
-| `end_date`   | datetime | —      | Exclusive upper bound on timestamp |
+| `end_date`   | datetime | —      | Inclusive upper bound on timestamp |
 | `skip`       | int     | `0`     | Number of results to skip (>= 0) |
 | `limit`      | int     | `50`    | Results per page (1–200) |
 
@@ -165,7 +165,7 @@ Aggregated event counts grouped by event type and time bucket, via MongoDB aggre
 | `time_bucket` | string | Yes      | —       | `hourly`, `daily`, or `weekly` |
 | `event_type`  | string | No       | —       | Filter by event type |
 | `start_date`  | datetime | No     | —       | Inclusive lower bound |
-| `end_date`    | datetime | No     | —       | Exclusive upper bound |
+| `end_date`    | datetime | No     | —       | Inclusive upper bound |
 
 **Date range limits per bucket:** hourly max 7 days, daily max 365 days, weekly max 730 days.
 
@@ -230,7 +230,7 @@ Full-text search across event metadata via Elasticsearch.
 | `event_type` | string  | No       | —       | Filter by event type |
 | `user_id`    | string  | No       | —       | Filter by user ID |
 | `start_date` | datetime | No      | —       | Inclusive lower bound on timestamp |
-| `end_date`   | datetime | No      | —       | Exclusive upper bound on timestamp |
+| `end_date`   | datetime | No      | —       | Inclusive upper bound on timestamp |
 | `skip`       | int     | No       | `0`     | Number of results to skip (>= 0) |
 | `limit`      | int     | No       | `20`    | Results per page (1–100) |
 
@@ -300,22 +300,32 @@ Testing priorities follow the risk profile: unit tests cover the branching logic
 
 ## AI in My Workflow
 
-This project was built with [Claude](https://claude.ai) (Anthropic) as a development partner throughout the entire lifecycle.
+This project was built with Claude Code, using a combination of custom skills and agents, with implementation execution done via the superpowers plugin.
 
 ### How AI Was Used
 
-**Design iteration.** The system design went through 7 revisions. Each version was drafted collaboratively, then subjected to a structured review pass where Claude analyzed the design for gaps, contradictions, and unaddressed failure modes. This produced 6 review documents with specific issues — things like "graceful shutdown deadlocks if the worker is dead" and "no bounds validation on client-provided timestamps" — that were resolved before implementation began.
+**Domain Research.** Claude Code was used to do domain research into best practices for similar systems, up-to-date library information, common pitfalls, etc. This was critical, as Claude Code training knowledge was out of date and wanted to use several out of date and deprecated libraries (see Where I Pushed Back section below)
+
+**Design iteration.** The system design went through 7 revisions. Each version was drafted collaboratively, then subjected to a structured review pass where Claude analyzed the design for gaps, contradictions, and unaddressed failure modes. This produced dozens of design revisions and issues caught — things like "graceful shutdown deadlocks if the worker is dead" and "no bounds validation on client-provided timestamps" — that were resolved before implementation began.
 
 **Implementation planning.** The final design was translated into a sequenced 22-task implementation plan with explicit file lists, step-by-step instructions, and test expectations for each task. Claude generated this plan from the design document, and I reviewed/adjusted the sequencing and scope.
 
 **Code generation with TDD.** Each task followed a test-first pattern: write tests for the expected behavior, then implement until they pass. Claude generated both the tests and implementation code, which I reviewed for correctness against the design document and library documentation.
 
+**After initial implementation.** Claude Code was used to actively seek out issues and gaps, finding a number of bugs as well as implementation misses.
+
 ### Where I Pushed Back
 
-**API version incompatibilities.** Claude's initial designs referenced Motor (the async MongoDB driver), which is deprecated as of 2025. Research revealed that PyMongo 4.16+ now has native async support via `AsyncMongoClient`. Similarly, the Elasticsearch Python client underwent significant API changes in v9 — methods like `helpers.async_bulk` changed their return types and error handling semantics compared to v8 examples that appear in most training data. These required verifying current library documentation rather than relying on AI-generated code patterns.
+**API version incompatibilities.** Claude's initial designs referenced Motor (the async MongoDB driver), which is deprecated as of 2025. Research revealed that PyMongo 4.16+ now has native async support via `AsyncMongoClient`. Similarly, the Elasticsearch Python client underwent significant API changes in v9 — methods like `helpers.async_bulk` changed their return types and error handling semantics compared to v8 examples that appear in most training data. These required verifying current library documentation rather than relying on AI-generated code patterns. This prompted a dedicated research step before beginning the final design.
 
 **Library API changes.** Several generated code snippets used outdated APIs — for example, Elasticsearch bulk helper patterns from v7/v8 that don't work with v9's `BulkIndexError` exception handling, and `testcontainers` configuration patterns that changed between major versions. Each case required consulting the actual library source or docs to get correct, current usage.
 
+**Project Structure** Claude frequently confused some concepts, grouping code together that were separate modules. Claude leaned towards making several single use modules, such as a dedicated cache module for a single small redis helper.
+
+**Over Engineering** Claude correctly identified several gaps and potential issues that would result in this project not being production ready, particularly around the use of an in-memory queue. Even with the in-memory queue being an explicit part of the project requirements, I frequently had to steer it away from over-engineering aspects that were out of scope.
+
+**Missing types and inconsistent use of type safety** Claude's implementation often skipped type definitions, or mistyped data. This prompted me to add pyright and do a manual pass to check types. This type checking caught a number of type issues, as well as some legitimate bugs.
+
 ### How It Shaped the Approach
 
-The design-then-review cycle was the most valuable pattern. Having an AI reviewer that can systematically scan for failure modes and edge cases — across 7 iterations — caught issues that would have surfaced much later during implementation or testing. The structured review format (issue → decision → alternatives considered → rationale) also forced explicit documentation of design decisions, which made the implementation plan more precise and reduced ambiguity during coding.
+The research-then-design-then-review cycle was the most valuable pattern. Having an AI reviewer that can systematically scan for failure modes and edge cases — across 7 iterations — caught issues that would have surfaced much later during implementation or testing. The structured review format (issue → decision → alternatives considered → rationale) also forced explicit documentation of design decisions, which made the implementation plan more precise and reduced ambiguity during coding. The research before design caught a number of issues with out of date and deprecated libraries.

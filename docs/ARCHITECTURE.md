@@ -29,10 +29,10 @@ Worker (background task)
   └──▶ DLQ (failed after retries)
 
 Read paths:
-  GET /events, /stats  ──▶ MongoDB
-  GET /events/search   ──▶ Elasticsearch
-  GET /stats/realtime  ──▶ Redis cache ──miss──▶ MongoDB
-  GET /health          ──▶ all stores
+  GET /events, /events/stats      ──▶ MongoDB
+  GET /events/search              ──▶ Elasticsearch
+  GET /events/stats/realtime      ──▶ Redis cache ──miss──▶ MongoDB
+  GET /health                     ──▶ all stores
 ```
 
 All writes go through the queue. The POST handler never touches MongoDB or Elasticsearch directly; it validates the input, enqueues the event, and returns 202 Accepted. The worker is the sole writer to both stores. Read endpoints query whichever store is appropriate: MongoDB for structured queries and aggregation, Elasticsearch for full-text and metadata search, Redis for cached realtime stats.
